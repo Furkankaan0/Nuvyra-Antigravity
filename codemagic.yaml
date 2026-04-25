@@ -13,9 +13,6 @@ workflows:
       xcode: latest
       groups:
         - app_store_credentials
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.nuvyra.app
       vars:
         BUNDLE_ID: "com.nuvyra.app"
         XCODE_SCHEME: "Nuvyra"

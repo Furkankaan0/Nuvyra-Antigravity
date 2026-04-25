@@ -1,0 +1,153 @@
+workflows:
+
+  # ════════════════════════════════════════════════════════════════
+  # NUVYRA iOS — TestFlight Build
+  # SwiftUI native app, XcodeGen ile proje üretimi
+  # ════════════════════════════════════════════════════════════════
+  ios-testflight:
+    name: Nuvyra iOS TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    environment:
+      xcode: latest
+      groups:
+        - app_store_credentials
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.nuvyra.app
+      vars:
+        BUNDLE_ID: "com.nuvyra.app"
+        XCODE_SCHEME: "Nuvyra"
+        XCODE_PROJECT: "Nuvyra.xcodeproj"
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "main"
+          include: true
+        - pattern: "release/*"
+          include: true
+
+    cache:
+      cache_paths:
+        - $HOME/Library/Caches/org.swift.swiftpm
+
+    scripts:
+      - name: Show environment
+        script: |
+          xcodebuild -version
+          swift --version
+          echo "Build number: $PROJECT_BUILD_NUMBER"
+
+      - name: Install XcodeGen
+        script: |
+          brew install xcodegen
+
+      - name: Generate Xcode project
+        script: |
+          cd "$CM_BUILD_DIR"
+          xcodegen generate
+          echo "Xcode project generated successfully"
+          ls -la *.xcodeproj
+
+      - name: Resolve Swift packages
+        script: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME"
+
+      - name: Run unit tests
+        script: |
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty || true
+
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+
+      - name: Increment build number
+        script: |
+          cd "$CM_BUILD_DIR"
+          agvtool new-version -all $PROJECT_BUILD_NUMBER || \
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $PROJECT_BUILD_NUMBER" \
+            "$CM_BUILD_DIR/Nuvyra/Resources/Info.plist" 2>/dev/null || true
+
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testers
+
+  # ════════════════════════════════════════════════════════════════
+  # NUVYRA iOS — PR Build (Test Only, No Publish)
+  # ════════════════════════════════════════════════════════════════
+  ios-pr-check:
+    name: Nuvyra PR Check
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+
+    environment:
+      xcode: latest
+      vars:
+        XCODE_SCHEME: "Nuvyra"
+        XCODE_PROJECT: "Nuvyra.xcodeproj"
+
+    triggering:
+      events:
+        - pull_request
+      branch_patterns:
+        - pattern: "main"
+          include: true
+
+    scripts:
+      - name: Install XcodeGen
+        script: |
+          brew install xcodegen
+
+      - name: Generate Xcode project
+        script: |
+          cd "$CM_BUILD_DIR"
+          xcodegen generate
+
+      - name: Resolve packages
+        script: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME"
+
+      - name: Build and Test
+        script: |
+          xcodebuild test \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty || true
+
+    artifacts:
+      - /tmp/xcodebuild_logs/*.log

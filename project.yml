@@ -16,12 +16,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_PREVIEWS: "YES"
 
-packages:
-  # Add SPM dependencies here as needed
-  # Example:
-  # KeychainAccess:
-  #   url: https://github.com/kishikawakatsumi/KeychainAccess
-  #   from: "4.2.2"
+
 
 targets:
   Nuvyra:
